@@ -6,10 +6,11 @@ RUN apk update && apk add --no-cache gcc musl-dev gcompat
 WORKDIR /whatsapp
 COPY ./src .
 
+ENV GOCACHE=/root/.cache/go-build
 # Fetch dependencies.
-RUN go mod download
+RUN --mount=type=cache,mode=0755,target=/go/pkg/mod go mod download
 # Build the binary.
-RUN go build -o /app/whatsapp
+RUN --mount=type=cache,target="/root/.cache/go-build" go build -o /app/whatsapp
 
 #############################
 ## STEP 2 build a smaller image

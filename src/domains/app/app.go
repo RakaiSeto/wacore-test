@@ -12,6 +12,7 @@ type IAppService interface {
 	Reconnect(ctx context.Context) (err error)
 	FirstDevice(ctx context.Context) (response DevicesResponse, err error)
 	FetchDevices(ctx context.Context) (response []DevicesResponse, err error)
+	CheckJid(ctx context.Context, jid string) (isValid bool, err error)
 }
 
 type DevicesResponse struct {

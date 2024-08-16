@@ -1,19 +1,19 @@
 package config
 
 import (
-	"go.mau.fi/whatsmeow/proto/waCompanionReg"
+	waProto "go.mau.fi/whatsmeow/proto/waCompanionReg"
 )
 
 var (
-	AppVersion             = "v4.16.0"
+	AppVersion             = "v1.0.0"
 	AppPort                = "3000"
 	AppDebug               = false
-	AppOs                  = "AldinoKemal"
-	AppPlatform            = waCompanionReg.DeviceProps_PlatformType(1)
+	AppOs                  = "NTE"
+	AppPlatform            = waProto.DeviceProps_CHROME
 	AppBasicAuthCredential string
 
 	PathQrCode    = "statics/qrcode"
-	PathSendItems = "statics/senditems"
+	PathSendItems = "/filestorage"
 	PathMedia     = "statics/media"
 	PathStorages  = "storages"
 
@@ -22,8 +22,8 @@ var (
 	WhatsappAutoReplyMessage    string
 	WhatsappWebhook             string
 	WhatsappLogLevel                  = "ERROR"
-	WhatsappSettingMaxFileSize  int64 = 50000000  // 50MB
-	WhatsappSettingMaxVideoSize int64 = 100000000 // 100MB
+	WhatsappSettingMaxFileSize  int64 = 5000000  // 50MB
+	WhatsappSettingMaxVideoSize int64 = 10000000 // 100MB
 	WhatsappTypeUser                  = "@s.whatsapp.net"
 	WhatsappTypeGroup                 = "@g.us"
 )

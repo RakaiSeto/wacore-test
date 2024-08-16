@@ -1,10 +1,10 @@
 package rest
 
 import (
-	domainSend "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/send"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/utils"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/whatsapp"
 	"github.com/gofiber/fiber/v2"
+	domainSend "github.com/trio-kwek-kwek/GoWhatsappWeb/domains/send"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/pkg/utils"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/pkg/whatsapp"
 )
 
 type Send struct {
@@ -50,10 +50,6 @@ func (controller *Send) SendImage(c *fiber.Ctx) error {
 	err := c.BodyParser(&request)
 	utils.PanicIfNeeded(err)
 
-	file, err := c.FormFile("image")
-	utils.PanicIfNeeded(err)
-
-	request.Image = file
 	whatsapp.SanitizePhone(&request.Phone)
 
 	response, err := controller.Service.SendImage(c.UserContext(), request)
@@ -94,10 +90,6 @@ func (controller *Send) SendVideo(c *fiber.Ctx) error {
 	err := c.BodyParser(&request)
 	utils.PanicIfNeeded(err)
 
-	video, err := c.FormFile("video")
-	utils.PanicIfNeeded(err)
-
-	request.Video = video
 	whatsapp.SanitizePhone(&request.Phone)
 
 	response, err := controller.Service.SendVideo(c.UserContext(), request)

@@ -1,20 +1,19 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/domains/app"
-	domainSend "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/send"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/internal/rest/helpers"
-	pkgError "github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/error"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/utils"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/whatsapp"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/validations"
 	"github.com/disintegration/imaging"
-	fiberUtils "github.com/gofiber/fiber/v2/utils"
 	"github.com/sirupsen/logrus"
-	"github.com/valyala/fasthttp"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/config"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/domains/app"
+	domainSend "github.com/trio-kwek-kwek/GoWhatsappWeb/domains/send"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/internal/rest/helpers"
+	pkgError "github.com/trio-kwek-kwek/GoWhatsappWeb/pkg/error"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/pkg/utils"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/pkg/whatsapp"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/validations"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"google.golang.org/protobuf/proto"
@@ -78,6 +77,14 @@ func (service serviceSend) SendText(ctx context.Context, request domainSend.Mess
 		return response, err
 	}
 
+	sender, fetchErr := service.appService.FirstDevice(ctx)
+	if fetchErr != nil {
+		response.Sender = "errorFetch"
+	} else {
+		response.Sender = sender.Device
+	}
+
+	response.TraceCode = request.TraceCode
 	response.MessageID = ts.ID
 	response.Status = fmt.Sprintf("Message sent to %s (server timestamp: %s)", request.Phone, ts.Timestamp.String())
 	return response, nil
@@ -96,47 +103,10 @@ func (service serviceSend) SendImage(ctx context.Context, request domainSend.Ima
 	var (
 		imagePath      string
 		imageThumbnail string
-		deletedItems   []string
 	)
 
 	// Save image to server
-	oriImagePath := fmt.Sprintf("%s/%s", config.PathSendItems, request.Image.Filename)
-	err = fasthttp.SaveMultipartFile(request.Image, oriImagePath)
-	if err != nil {
-		return response, err
-	}
-	deletedItems = append(deletedItems, oriImagePath)
-
-	/* Generate thumbnail with smalled image size */
-	srcImage, err := imaging.Open(oriImagePath)
-	if err != nil {
-		return response, pkgError.InternalServerError(fmt.Sprintf("failed to open image %v", err))
-	}
-
-	// Resize Thumbnail
-	resizedImage := imaging.Resize(srcImage, 100, 0, imaging.Lanczos)
-	imageThumbnail = fmt.Sprintf("%s/thumbnails-%s", config.PathSendItems, request.Image.Filename)
-	if err = imaging.Save(resizedImage, imageThumbnail); err != nil {
-		return response, pkgError.InternalServerError(fmt.Sprintf("failed to save thumbnail %v", err))
-	}
-	deletedItems = append(deletedItems, imageThumbnail)
-
-	if request.Compress {
-		// Resize image
-		openImageBuffer, err := imaging.Open(oriImagePath)
-		if err != nil {
-			return response, pkgError.InternalServerError(fmt.Sprintf("failed to open image %v", err))
-		}
-		newImage := imaging.Resize(openImageBuffer, 600, 0, imaging.Lanczos)
-		newImagePath := fmt.Sprintf("%s/new-%s", config.PathSendItems, request.Image.Filename)
-		if err = imaging.Save(newImage, newImagePath); err != nil {
-			return response, pkgError.InternalServerError(fmt.Sprintf("failed to save image %v", err))
-		}
-		deletedItems = append(deletedItems, newImagePath)
-		imagePath = newImagePath
-	} else {
-		imagePath = oriImagePath
-	}
+	imagePath = fmt.Sprintf("%s/%s", config.PathSendItems, request.Image)
 
 	// Send to WA server
 	dataWaCaption := request.Caption
@@ -149,13 +119,19 @@ func (service serviceSend) SendImage(ctx context.Context, request domainSend.Ima
 		fmt.Printf("failed to upload file: %v", err)
 		return response, err
 	}
-	dataWaThumbnail, err := os.ReadFile(imageThumbnail)
+
+	srcImage, err := imaging.Open(imagePath)
 	if err != nil {
-		return response, pkgError.InternalServerError(fmt.Sprintf("failed to read thumbnail %v", err))
+		return response, pkgError.InternalServerError(fmt.Sprintf("failed to open image %v", err))
+	}
+
+	resizedImage := imaging.Resize(srcImage, 100, 0, imaging.Lanczos)
+	imageThumbnail = fmt.Sprintf("%s/thumbnails-%s", config.PathSendItems, request.Image)
+	if err = imaging.Save(resizedImage, imageThumbnail); err != nil {
+		return response, pkgError.InternalServerError(fmt.Sprintf("failed to save thumbnail %v", err))
 	}
 
 	msg := &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
-		JPEGThumbnail: dataWaThumbnail,
 		Caption:       proto.String(dataWaCaption),
 		URL:           proto.String(uploadedImage.URL),
 		DirectPath:    proto.String(uploadedImage.DirectPath),
@@ -167,16 +143,18 @@ func (service serviceSend) SendImage(ctx context.Context, request domainSend.Ima
 		ViewOnce:      proto.Bool(request.ViewOnce),
 	}}
 	ts, err := service.WaCli.SendMessage(ctx, dataWaRecipient, msg)
-	go func() {
-		errDelete := utils.RemoveFile(0, deletedItems...)
-		if errDelete != nil {
-			fmt.Println("error when deleting picture: ", errDelete)
-		}
-	}()
 	if err != nil {
 		return response, err
 	}
 
+	sender, fetchErr := service.appService.FirstDevice(ctx)
+	if fetchErr != nil {
+		response.Sender = "errorFetch"
+	} else {
+		response.Sender = sender.Device
+	}
+
+	response.TraceCode = request.TraceCode
 	response.MessageID = ts.ID
 	response.Status = fmt.Sprintf("Message sent to %s (server timestamp: %s)", request.Phone, ts.Timestamp.String())
 	return response, nil
@@ -219,6 +197,14 @@ func (service serviceSend) SendFile(ctx context.Context, request domainSend.File
 		return response, err
 	}
 
+	sender, fetchErr := service.appService.FirstDevice(ctx)
+	if fetchErr != nil {
+		response.Sender = "errorFetch"
+	} else {
+		response.Sender = sender.Device
+	}
+
+	response.TraceCode = request.TraceCode
 	response.MessageID = ts.ID
 	response.Status = fmt.Sprintf("Document sent to %s (server timestamp: %s)", request.Phone, ts.Timestamp.String())
 	return response, nil
@@ -235,18 +221,12 @@ func (service serviceSend) SendVideo(ctx context.Context, request domainSend.Vid
 	}
 
 	var (
-		videoPath      string
-		videoThumbnail string
-		deletedItems   []string
+		videoPath    string
+		deletedItems []string
 	)
 
-	generateUUID := fiberUtils.UUIDv4()
 	// Save video to server
-	oriVideoPath := fmt.Sprintf("%s/%s", config.PathSendItems, generateUUID+request.Video.Filename)
-	err = fasthttp.SaveMultipartFile(request.Video, oriVideoPath)
-	if err != nil {
-		return response, pkgError.InternalServerError(fmt.Sprintf("failed to store video in server %v", err))
-	}
+	videoPath = fmt.Sprintf("%s/%s", config.PathSendItems, request.Video)
 
 	// Check if ffmpeg is installed
 	_, err = exec.LookPath("ffmpeg")
@@ -255,45 +235,17 @@ func (service serviceSend) SendVideo(ctx context.Context, request domainSend.Vid
 	}
 
 	// Get thumbnail video with ffmpeg
-	thumbnailVideoPath := fmt.Sprintf("%s/%s", config.PathSendItems, generateUUID+".png")
-	cmdThumbnail := exec.Command("ffmpeg", "-i", oriVideoPath, "-ss", "00:00:01.000", "-vframes", "1", thumbnailVideoPath)
+	var outBuffer bytes.Buffer
+	var errBuffer bytes.Buffer
+	thumbnailVideoPath := fmt.Sprintf("%s/%s", config.PathSendItems, request.Video+".png")
+	cmdThumbnail := exec.Command("ffmpeg", "-i", videoPath, "-ss", "00:00:01.000", "-vframes", "1", "-f", "image2pipe", "pipe:1")
+	cmdThumbnail.Stdout = &outBuffer
+	cmdThumbnail.Stderr = &errBuffer
 	err = cmdThumbnail.Run()
 	if err != nil {
-		return response, pkgError.InternalServerError(fmt.Sprintf("failed to create thumbnail %v", err))
+		return response, pkgError.InternalServerError(fmt.Sprintf("failed to create thumbnail %v", errBuffer.String()))
 	}
 
-	// Resize Thumbnail
-	srcImage, err := imaging.Open(thumbnailVideoPath)
-	if err != nil {
-		return response, pkgError.InternalServerError(fmt.Sprintf("failed to open image %v", err))
-	}
-	resizedImage := imaging.Resize(srcImage, 100, 0, imaging.Lanczos)
-	thumbnailResizeVideoPath := fmt.Sprintf("%s/thumbnails-%s", config.PathSendItems, generateUUID+".png")
-	if err = imaging.Save(resizedImage, thumbnailResizeVideoPath); err != nil {
-		return response, pkgError.InternalServerError(fmt.Sprintf("failed to save thumbnail %v", err))
-	}
-
-	deletedItems = append(deletedItems, thumbnailVideoPath)
-	deletedItems = append(deletedItems, thumbnailResizeVideoPath)
-	videoThumbnail = thumbnailResizeVideoPath
-
-	if request.Compress {
-		compresVideoPath := fmt.Sprintf("%s/%s", config.PathSendItems, generateUUID+".mp4")
-
-		cmdCompress := exec.Command("ffmpeg", "-i", oriVideoPath, "-strict", "-2", compresVideoPath)
-		err = cmdCompress.Run()
-		if err != nil {
-			return response, pkgError.InternalServerError("failed to compress video")
-		}
-
-		videoPath = compresVideoPath
-		deletedItems = append(deletedItems, compresVideoPath)
-	} else {
-		videoPath = oriVideoPath
-		deletedItems = append(deletedItems, oriVideoPath)
-	}
-
-	//Send to WA server
 	dataWaVideo, err := os.ReadFile(videoPath)
 	if err != nil {
 		return response, err
@@ -302,10 +254,8 @@ func (service serviceSend) SendVideo(ctx context.Context, request domainSend.Vid
 	if err != nil {
 		return response, pkgError.InternalServerError(fmt.Sprintf("Failed to upload file: %v", err))
 	}
-	dataWaThumbnail, err := os.ReadFile(videoThumbnail)
-	if err != nil {
-		return response, err
-	}
+	//remove thumbnail
+	deletedItems = append(deletedItems, thumbnailVideoPath)
 
 	msg := &waE2E.Message{VideoMessage: &waE2E.VideoMessage{
 		URL:                 proto.String(uploaded.URL),
@@ -317,9 +267,9 @@ func (service serviceSend) SendVideo(ctx context.Context, request domainSend.Vid
 		MediaKey:            uploaded.MediaKey,
 		DirectPath:          proto.String(uploaded.DirectPath),
 		ViewOnce:            proto.Bool(request.ViewOnce),
-		JPEGThumbnail:       dataWaThumbnail,
-		ThumbnailEncSHA256:  dataWaThumbnail,
-		ThumbnailSHA256:     dataWaThumbnail,
+		JPEGThumbnail:       outBuffer.Bytes(),
+		ThumbnailEncSHA256:  outBuffer.Bytes(),
+		ThumbnailSHA256:     outBuffer.Bytes(),
 		ThumbnailDirectPath: proto.String(uploaded.DirectPath),
 	}}
 	ts, err := service.WaCli.SendMessage(ctx, dataWaRecipient, msg)
@@ -333,6 +283,14 @@ func (service serviceSend) SendVideo(ctx context.Context, request domainSend.Vid
 		return response, err
 	}
 
+	sender, fetchErr := service.appService.FirstDevice(ctx)
+	if fetchErr != nil {
+		response.Sender = "errorFetch"
+	} else {
+		response.Sender = sender.Device
+	}
+
+	response.TraceCode = request.TraceCode
 	response.MessageID = ts.ID
 	response.Status = fmt.Sprintf("Video sent to %s (server timestamp: %s)", request.Phone, ts.Timestamp.String())
 	return response, nil
@@ -359,6 +317,14 @@ func (service serviceSend) SendContact(ctx context.Context, request domainSend.C
 		return response, err
 	}
 
+	sender, fetchErr := service.appService.FirstDevice(ctx)
+	if fetchErr != nil {
+		response.Sender = "errorFetch"
+	} else {
+		response.Sender = sender.Device
+	}
+
+	response.TraceCode = request.TraceCode
 	response.MessageID = ts.ID
 	response.Status = fmt.Sprintf("Contact sent to %s (server timestamp: %s)", request.Phone, ts.Timestamp.String())
 	return response, nil
@@ -388,6 +354,14 @@ func (service serviceSend) SendLink(ctx context.Context, request domainSend.Link
 		return response, err
 	}
 
+	sender, fetchErr := service.appService.FirstDevice(ctx)
+	if fetchErr != nil {
+		response.Sender = "errorFetch"
+	} else {
+		response.Sender = sender.Device
+	}
+
+	response.TraceCode = request.TraceCode
 	response.MessageID = ts.ID
 	response.Status = fmt.Sprintf("Link sent to %s (server timestamp: %s)", request.Phone, ts.Timestamp.String())
 	return response, nil
@@ -417,6 +391,14 @@ func (service serviceSend) SendLocation(ctx context.Context, request domainSend.
 		return response, err
 	}
 
+	sender, fetchErr := service.appService.FirstDevice(ctx)
+	if fetchErr != nil {
+		response.Sender = "errorFetch"
+	} else {
+		response.Sender = sender.Device
+	}
+
+	response.TraceCode = request.TraceCode
 	response.MessageID = ts.ID
 	response.Status = fmt.Sprintf("Send location success %s (server timestamp: %s)", request.Phone, ts.Timestamp.String())
 	return response, nil
@@ -458,6 +440,14 @@ func (service serviceSend) SendAudio(ctx context.Context, request domainSend.Aud
 		return response, err
 	}
 
+	sender, fetchErr := service.appService.FirstDevice(ctx)
+	if fetchErr != nil {
+		response.Sender = "errorFetch"
+	} else {
+		response.Sender = sender.Device
+	}
+
+	response.TraceCode = request.TraceCode
 	response.MessageID = ts.ID
 	response.Status = fmt.Sprintf("Send audio success %s (server timestamp: %s)", request.Phone, ts.Timestamp.String())
 	return response, nil
@@ -478,6 +468,14 @@ func (service serviceSend) SendPoll(ctx context.Context, request domainSend.Poll
 		return response, err
 	}
 
+	sender, fetchErr := service.appService.FirstDevice(ctx)
+	if fetchErr != nil {
+		response.Sender = "errorFetch"
+	} else {
+		response.Sender = sender.Device
+	}
+
+	response.TraceCode = request.TraceCode
 	response.MessageID = ts.ID
 	response.Status = fmt.Sprintf("Send poll success %s (server timestamp: %s)", request.Phone, ts.Timestamp.String())
 	return response, nil

@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
-	domainApp "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/app"
-	pkgError "github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/error"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/validations"
 	fiberUtils "github.com/gofiber/fiber/v2/utils"
 	"github.com/sirupsen/logrus"
 	"github.com/skip2/go-qrcode"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/config"
+	domainApp "github.com/trio-kwek-kwek/GoWhatsappWeb/domains/app"
+	pkgError "github.com/trio-kwek-kwek/GoWhatsappWeb/pkg/error"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/validations"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/pkg/whatsapp"
 	"go.mau.fi/libsignal/logger"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
@@ -89,6 +90,22 @@ func (service serviceApp) Login(_ context.Context) (response domainApp.LoginResp
 	response.ImagePath = <-chImage
 
 	return response, nil
+}
+
+func (service serviceApp) CheckJid(_ context.Context, request string) (response bool, err error) {
+	if service.WaCli == nil {
+		return false, pkgError.ErrWaCLI
+	}
+
+	request += "@s.whatsapp.net"
+
+	responseNew, err := whatsapp.ValidateJidWithLogin(service.WaCli, request)
+	fmt.Println("responseNew", responseNew)
+	if responseNew.IsEmpty() || err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (service serviceApp) LoginWithCode(ctx context.Context, phoneNumber string) (loginCode string, err error) {

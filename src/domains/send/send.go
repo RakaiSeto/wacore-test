@@ -19,4 +19,6 @@ type ISendService interface {
 type GenericResponse struct {
 	MessageID string `json:"message_id"`
 	Status    string `json:"status"`
+	Sender    string `json:"sender"`
+	TraceCode string `json:"trace_code"`
 }

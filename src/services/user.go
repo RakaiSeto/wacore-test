@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	domainUser "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/user"
-	pkgError "github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/error"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/whatsapp"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/validations"
+	domainUser "github.com/trio-kwek-kwek/GoWhatsappWeb/domains/user"
+	pkgError "github.com/trio-kwek-kwek/GoWhatsappWeb/pkg/error"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/pkg/whatsapp"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/validations"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 	"time"
@@ -36,6 +36,7 @@ func (service userService) Info(ctx context.Context, request domainUser.InfoRequ
 
 	jids = append(jids, dataWaRecipient)
 	resp, err := service.WaCli.GetUserInfo(jids)
+	service.WaCli.Log.Infof("GetUserInfo: %+v", resp)
 	if err != nil {
 		return response, err
 	}

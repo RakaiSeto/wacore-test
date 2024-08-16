@@ -5,11 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/internal/websocket"
-	pkgError "github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/error"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/config"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/internal/websocket"
+	pkgError "github.com/trio-kwek-kwek/GoWhatsappWeb/pkg/error"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -167,7 +167,7 @@ func InitWaCLI(storeContainer *sqlstore.Container) *whatsmeow.Client {
 	osName := fmt.Sprintf("%s %s", config.AppOs, config.AppVersion)
 	store.DeviceProps.PlatformType = &config.AppPlatform
 	store.DeviceProps.Os = &osName
-	cli = whatsmeow.NewClient(device, waLog.Stdout("Client", config.WhatsappLogLevel, true))
+	cli = whatsmeow.NewClient(device, waLog.Stdout("Client", "", true))
 	cli.EnableAutoReconnect = true
 	cli.AutoTrustIdentity = true
 	cli.AddEventHandler(handler)
@@ -262,10 +262,20 @@ func handler(rawEvt interface{}) {
 			}
 		}
 	case *events.Receipt:
+		var errCallback error
+		cli.Log.Infof("Receipt event: %+v", evt)
 		if evt.Type == types.ReceiptTypeRead || evt.Type == types.ReceiptTypeReadSelf {
-			log.Infof("%v was read by %s at %s", evt.MessageIDs, evt.SourceString(), evt.Timestamp)
+			cli.Log.Infof("%v was read by %s at %s", evt.MessageIDs, evt.SourceString(), evt.Timestamp)
+			errCallback = forwardCallback(evt.MessageIDs[0], "000")
+			if errCallback != nil {
+				cli.Log.Infof("FAILED TO SEND CALLBACK %s FOR MESSAGE ID %s : %s", "READ", evt.MessageIDs[0], errCallback.Error())
+			}
 		} else if evt.Type == types.ReceiptTypeDelivered {
-			log.Infof("%s was delivered to %s at %s", evt.MessageIDs[0], evt.SourceString(), evt.Timestamp)
+			cli.Log.Infof("%s was delivered to %s at %s", evt.MessageIDs[0], evt.SourceString(), evt.Timestamp)
+			errCallback = forwardCallback(evt.MessageIDs[0], "003")
+			if errCallback != nil {
+				cli.Log.Infof("FAILED TO SEND CALLBACK %s FOR MESSAGE ID %s : %s", "DELIVERED", evt.MessageIDs[0], errCallback.Error())
+			}
 		}
 	case *events.Presence:
 		if evt.Unavailable {
@@ -404,6 +414,25 @@ func forwardToWebhook(evt *events.Message) error {
 	if _, err = client.Do(req); err != nil {
 		return pkgError.WebhookError(fmt.Sprintf("error when submit webhook %v", err))
 	}
+	return nil
+}
+
+func forwardCallback(mid string, status string) error {
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	req, err := http.NewRequest(http.MethodGet, "http://host.docker.internal:9999?mid="+mid+"&status="+status, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
 	return nil
 }
 

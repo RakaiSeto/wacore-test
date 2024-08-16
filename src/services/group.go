@@ -2,11 +2,11 @@ package services
 
 import (
 	"context"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
-	domainGroup "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/group"
-	pkgError "github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/error"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/whatsapp"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/validations"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/config"
+	domainGroup "github.com/trio-kwek-kwek/GoWhatsappWeb/domains/group"
+	pkgError "github.com/trio-kwek-kwek/GoWhatsappWeb/pkg/error"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/pkg/whatsapp"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/validations"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 )

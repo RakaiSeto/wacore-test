@@ -2,9 +2,9 @@ package rest
 
 import (
 	"fmt"
-	domainApp "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/app"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/utils"
 	"github.com/gofiber/fiber/v2"
+	domainApp "github.com/trio-kwek-kwek/GoWhatsappWeb/domains/app"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/pkg/utils"
 )
 
 type App struct {
@@ -18,8 +18,29 @@ func InitRestApp(app *fiber.App, service domainApp.IAppService) App {
 	app.Get("/app/logout", rest.Logout)
 	app.Get("/app/reconnect", rest.Reconnect)
 	app.Get("/app/devices", rest.Devices)
+	app.Get("/app/checkjid/:jid", rest.CheckJid)
 
 	return App{Service: service}
+}
+
+func (handler *App) CheckJid(c *fiber.Ctx) error {
+	jid := c.Params("jid")
+
+	var isRegistered bool
+	if len(jid) < 8 {
+		isRegistered = false
+	} else {
+		var err error
+		isRegistered, err = handler.Service.CheckJid(c.UserContext(), jid)
+		fmt.Println(err)
+	}
+
+	return c.JSON(utils.ResponseData{
+		Status:  200,
+		Code:    "SUCCESS",
+		Message: "Check jid success",
+		Results: isRegistered,
+	})
 }
 
 func (handler *App) Login(c *fiber.Ctx) error {

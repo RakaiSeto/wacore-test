@@ -1,4 +1,4 @@
-module github.com/aldinokemal/go-whatsapp-web-multidevice
+module github.com/trio-kwek-kwek/GoWhatsappWeb
 
 go 1.21
 

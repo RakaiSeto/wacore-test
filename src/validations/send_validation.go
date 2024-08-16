@@ -3,12 +3,14 @@ package validations
 import (
 	"context"
 	"fmt"
-	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
-	domainSend "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/send"
-	pkgError "github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/error"
 	"github.com/dustin/go-humanize"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/go-ozzo/ozzo-validation/v4/is"
+	"github.com/trio-kwek-kwek/GoWhatsappWeb/config"
+	domainSend "github.com/trio-kwek-kwek/GoWhatsappWeb/domains/send"
+	pkgError "github.com/trio-kwek-kwek/GoWhatsappWeb/pkg/error"
+	"net/http"
+	"os"
 )
 
 func ValidateSendMessage(ctx context.Context, request domainSend.MessageRequest) error {
@@ -39,7 +41,17 @@ func ValidateSendImage(ctx context.Context, request domainSend.ImageRequest) err
 		"image/png":  true,
 	}
 
-	if !availableMimes[request.Image.Header.Get("Content-Type")] {
+	// Save image to server
+	imagePath := fmt.Sprintf("%s/%s", config.PathSendItems, request.Image)
+
+	dataWaImage, err := os.ReadFile(imagePath)
+	if err != nil {
+		return err
+	}
+
+	contentType := http.DetectContentType(dataWaImage)
+
+	if !availableMimes[contentType] {
 		return pkgError.ValidationError("your image is not allowed. please use jpg/jpeg/png")
 	}
 
@@ -80,13 +92,18 @@ func ValidateSendVideo(ctx context.Context, request domainSend.VideoRequest) err
 		"video/avi":        true,
 	}
 
-	if !availableMimes[request.Video.Header.Get("Content-Type")] {
-		return pkgError.ValidationError("your video type is not allowed. please use mp4/mkv/avi")
+	// Save image to server
+	imagePath := fmt.Sprintf("%s/%s", config.PathSendItems, request.Video)
+
+	dataWaImage, err := os.ReadFile(imagePath)
+	if err != nil {
+		return err
 	}
 
-	if request.Video.Size > config.WhatsappSettingMaxVideoSize { // 30MB
-		maxSizeString := humanize.Bytes(uint64(config.WhatsappSettingMaxVideoSize))
-		return pkgError.ValidationError(fmt.Sprintf("max video upload is %s, please upload in cloud and send via text if your file is higher than %s", maxSizeString, maxSizeString))
+	contentType := http.DetectContentType(dataWaImage)
+
+	if !availableMimes[contentType] {
+		return pkgError.ValidationError("your video type is not allowed. please use mp4/mkv/avi")
 	}
 
 	return nil
