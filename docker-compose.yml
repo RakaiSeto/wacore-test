@@ -1,15 +1,23 @@
 version: '3.9'
 services:
-  whatsapp_go:
+  nodetest:
+    container_name: nodetest
     logging:
       driver: "json-file"
       options:
         max-size: "200k"
         max-file: "10"
-    image: "aldinokemal2104/go-whatsapp-web-multidevice:latest"
     build:
       context: .
       dockerfile: ./docker/golang.Dockerfile
     restart: 'always'
     ports:
-      - "3000:3000"
+      - "12345:3000"
+    volumes:
+      - nodetest:/app/storages
+      - /nte/storage:/filestorage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+volumes:
+  nodetest:
+    name: nodetest
